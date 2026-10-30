@@ -1,0 +1,303 @@
+:root {
+  --bg: #F6F3EE;
+  --surface: #FFFDFA;
+  --ink: #2E3A3F;
+  --muted: #5E6A6F;
+  --line: #E4DFD6;
+  --sage: #8FA596;
+  --sage-deep: #5F7A6B;
+  --sage-text: #4F6A5B;
+  --sage-soft: #E6EDE7;
+  --clay: #C98B6B;
+  --clay-soft: #F4E6DD;
+  --clay-deep: #8A5136;
+  --foot: #5F7A6B;
+  --bike: #C98B6B;
+  --further: #55707F;
+  --blue-soft: #E3EAEF;
+  --radius: 14px;
+  --field: #fff;
+  --placeholder: #869094;
+  --shadow: rgba(46, 58, 63, .18);
+  --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.masthead, main, footer {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Masthead */
+.masthead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 36px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.home-link { flex-basis: 100%; color: var(--muted); font-size: 14px; text-decoration: none; }
+.home-link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand h1 { margin: 0; font: 500 34px/1 var(--serif); letter-spacing: -0.01em; }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 14px; letter-spacing: 0.02em; }
+.selma { flex: none; }
+
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab {
+  font: 500 15px var(--sans);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--ink); }
+.tab[aria-current="page"] { background: var(--sage-soft); color: var(--sage-text); }
+
+main { padding-top: 32px; padding-bottom: 48px; min-height: 60vh; }
+
+/* Buttons */
+.btn {
+  font: 500 15px var(--sans);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 10px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--sage); }
+.btn.primary { background: var(--sage-deep); border-color: var(--sage-deep); color: #fff; }
+.btn.primary:hover { background: #52695C; }
+.btn.quiet { background: none; }
+.btn.danger { background: none; border-color: transparent; color: var(--muted); padding: 6px 2px; font-weight: 400; font-size: 14px; }
+.btn.danger:hover { color: var(--clay-deep); }
+
+button:focus-visible, input:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 2px;
+}
+
+.link {
+  font: inherit; font-size: 14px;
+  color: var(--sage-text);
+  background: none; border: 0; padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.link.small { font-size: 13px; font-weight: 400; }
+
+/* Fields */
+input[type="search"], dialog input:not([type="checkbox"]), dialog textarea, dialog select {
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+input::placeholder, textarea::placeholder { color: var(--placeholder); }
+
+/* Dialogs */
+dialog {
+  border: 0;
+  border-radius: 18px;
+  padding: 0;
+  width: min(500px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 20px 60px var(--shadow);
+}
+dialog.wide { width: min(640px, calc(100vw - 24px)); }
+dialog::backdrop { background: rgba(46, 58, 63, .28); }
+dialog h2 { margin: 0; font: 500 26px/1.2 var(--serif); }
+dialog form { padding: 24px; display: grid; gap: 14px; }
+dialog label { display: block; font-size: 14px; font-weight: 500; }
+dialog form > label > input, dialog form label > textarea, #first-notes textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+dialog textarea { resize: vertical; line-height: 1.5; }
+#first-notes { display: grid; gap: 14px; }
+#first-notes .link { margin-left: 6px; }
+.optional { font-weight: 400; color: var(--muted); }
+.hint, .for-day { margin: -6px 0 0; color: var(--muted); font-size: 14px; }
+.for-day:empty { display: none; }
+.check { display: flex !important; align-items: center; gap: 8px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--sage-deep); margin: 0; }
+
+.dialog-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.spacer { flex: 1; }
+
+/* Chips: tags in the form and the shelf filter */
+.segmented { border: 0; padding: 0; margin: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.segmented legend { font-size: 14px; font-weight: 500; padding: 0; margin-bottom: 8px; }
+.segmented label { display: block; }
+.segmented input { position: absolute; opacity: 0; width: 0; }
+.segmented span:not(.optional) {
+  display: block;
+  padding: 7px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 400;
+}
+.segmented span:not(.optional):hover { border-color: var(--sage); }
+.segmented input:checked + span { background: var(--sage-soft); border-color: var(--sage); color: var(--sage-text); font-weight: 500; }
+.segmented input:focus-visible + span { outline: 2px solid var(--sage); outline-offset: 2px; }
+
+/* Footer */
+footer {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  padding-bottom: 48px;
+  color: var(--muted);
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+footer p { margin: 0; flex: 1 1 260px; }
+footer .backup { flex-basis: 100%; display: flex; gap: 8px; flex-wrap: wrap; }
+footer .backup .btn { font-size: 14px; padding: 7px 14px; }
+
+/* Toast */
+#toast {
+  position: fixed;
+  left: 50%; bottom: 28px;
+  transform: translate(-50%, 20px);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s, transform .2s;
+  z-index: 10;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+[hidden] { display: none !important; }
+
+.btn.small { font-size: 14px; padding: 7px 14px; }
+a.btn { text-decoration: none; display: inline-block; }
+.eyebrow { margin: 0 0 8px; font: 500 12px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* The light today */
+.light { margin-bottom: 26px; }
+.light p { margin: 12px 0 0; font: 400 20px/1.4 var(--serif); }
+.light strong { font-weight: 500; }
+.sky { position: relative; height: 34px; margin: 0 6px; }
+.sky::before { content: ""; position: absolute; left: 0; right: 0; top: 10px; height: 2px; background: var(--line); border-radius: 2px; }
+.day-span { position: absolute; top: 8px; height: 6px; border-radius: 6px; background: linear-gradient(90deg, #E9C9B8, #F2DDB0 50%, #E9C9B8); }
+.sun { position: absolute; top: 3px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #E2A75F; box-shadow: 0 0 0 4px rgba(226, 167, 95, .22); }
+.sun.moon { background: var(--surface); border: 2px solid var(--further); box-shadow: inset -4px -1px 0 0 var(--further); }
+.tick { position: absolute; top: 20px; transform: translateX(-50%); font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* Cards on Today */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; margin-bottom: 18px; }
+.card h2 { margin: 0 0 4px; font: 500 28px/1.2 var(--serif); }
+.card h3 { margin: 0 0 4px; font: 500 22px/1.25 var(--serif); }
+.card p { margin: 0 0 14px; }
+.card .hint { margin: 0 0 14px; }
+.card.somewhere { background: var(--blue-soft); border-color: transparent; }
+.card.headed { border-color: var(--clay); background: var(--clay-soft); }
+.card .how { color: var(--muted); }
+.card .noticing { font: italic 400 17px/1.45 var(--serif); }
+.card.been .outing-list { margin-bottom: 14px; }
+
+/* Outings */
+.outing-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.outing { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.outing:last-child { border-bottom: 0; }
+.outing .ways { display: flex; gap: 3px; padding-top: 7px; flex: none; min-width: 12px; }
+.outing .body { flex: 1; min-width: 0; }
+.outing p { margin: 0; }
+.outing .place { font: 500 18px/1.35 var(--serif); }
+.outing .when { font-size: 13px; color: var(--muted); }
+.outing .noticed { margin-top: 2px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.outing .btn.danger { flex: none; }
+.tag { font: 400 12px var(--sans); padding: 2px 9px; border-radius: 999px; background: var(--sage-soft); color: var(--sage-text); vertical-align: 2px; white-space: nowrap; }
+.way-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+.way-dot.ring { background: none; border: 2px solid var(--clay-deep); }
+.home-key { display: inline-block; width: 10px; height: 10px; background: var(--ink); clip-path: polygon(50% 0, 100% 45%, 100% 100%, 0 100%, 0 45%); }
+.month { margin: 26px 0 4px; font: 400 22px/1.2 var(--serif); }
+#outings-filter { margin: 8px 0 4px; }
+.day-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; }
+.day-panel h3 { margin: 0 0 6px; font: 500 20px var(--serif); }
+.day-panel .btn { margin-top: 10px; }
+.quiet-note { color: var(--muted); margin: 0; }
+.empty { text-align: center; padding: 30px 20px; color: var(--muted); }
+
+/* Week marks, as in the work journal */
+.this-week { margin-top: 30px; }
+.weeks { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px 6px; max-width: 420px; justify-items: center; }
+.weeks .wd { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+.mark { position: relative; width: 34px; height: 34px; border-radius: 50%; border: 0; padding: 0; background: none; display: grid; place-items: center; }
+button.mark { cursor: pointer; }
+.mark i { display: block; border-radius: 50%; }
+.mark.out i { width: 26px; height: 26px; }
+.mark.none i { width: 6px; height: 6px; background: var(--line); }
+.mark.ahead i { width: 6px; height: 6px; border: 1px solid var(--line); }
+.mark.today::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--ink); }
+.mark[aria-pressed="true"] { background: var(--sage-soft); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 22px 0 6px; font-size: 14px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.trail-key { color: var(--muted); font-size: 14px; margin: 0 0 28px; max-width: 56ch; }
+.nudge { background: var(--sage-soft); color: var(--sage-text); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 18px; }
+.nudge .link { margin-left: 10px; }
+
+/* The map: no streets, just where you went, on paper */
+.map-top { margin-bottom: 14px; }
+.map-paper { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+/* Faint graph paper, so the dots sit on a page rather than in a void. */
+.map-paper svg { display: block; width: 100%; height: auto;
+  background-image: linear-gradient(rgba(46, 58, 63, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(46, 58, 63, .05) 1px, transparent 1px);
+  background-size: 28px 28px; background-position: -1px -1px; }
+.map-paper .pin { cursor: pointer; outline: none; }
+.map-paper .pin circle { stroke: var(--surface); stroke-width: 2; }
+.map-paper .pin .hit { fill: transparent; stroke: none; }
+.map-paper .pin .research-ring { fill: none; stroke: var(--clay-deep); stroke-width: 2; }
+.map-paper .pin.open circle:not(.hit):not(.research-ring), .map-paper .pin:focus-visible circle:not(.hit):not(.research-ring) { stroke: var(--ink); stroke-width: 3; }
+.map-paper .home path { fill: var(--ink); stroke: var(--surface); stroke-width: 2; pointer-events: none; }
+.map-paper .compass path { fill: var(--muted); }
+.map-paper text { font: 500 12px var(--sans); fill: var(--muted); }
+.map-paper .scale path { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.map-empty { position: absolute; left: 0; right: 0; bottom: 18%; text-align: center; margin: 0; padding: 0 20px; color: var(--muted); font: italic 400 18px var(--serif); }
+.map-paper + .day-panel { margin-top: 16px; }
+
+dialog .pin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: -4px; font-size: 14px; }
+.home-spot { flex-basis: 100%; }
+
+@media (max-width: 560px) {
+  .light p { font-size: 18px; }
+  .card { padding: 18px; }
+  .card h2 { font-size: 24px; }
+}

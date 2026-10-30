@@ -1,0 +1,731 @@
+// Selma — a slow roaming journal.
+// A nudge to get out while the light lasts, a place to note where you went and one thing you
+// noticed, and a little map that draws itself from those places.
+// Everything is stored in this browser (localStorage); there is no server.
+
+const STORE_KEY = 'selma-roam.v1';
+const BACKUP_KEY = 'selma-roam.backup'; // the day the last backup was saved
+const TRAIL_WEEKS = 5;
+const ROTTERDAM_NOORD = { lat: 51.9340, lon: 4.4720, name: 'Rotterdam-Noord' };
+
+// Ways of getting out. An outing can be several at once (a train, then a walk).
+const WAYS = [
+  { id: 'foot', name: 'On foot' },
+  { id: 'bike', name: 'By bike' },
+  { id: 'further', name: 'Further afield' },
+];
+
+// How far "take me somewhere" sends you, in kilometres from where you are.
+const REACH = {
+  foot: { min: 0.8, max: 2.2 },
+  bike: { min: 3, max: 7 },
+};
+
+const state = loadState();
+let pick = null;          // what "take me somewhere" is offering right now
+let outingsDay = null;    // the day opened on the trail
+let researchOnly = false;
+let mapScope = 'near';    // 'near' home, or 'all'
+let mapPlace = null;      // the place opened on the map
+
+const $ = (sel) => document.querySelector(sel);
+const outingDialog = $('#outing-dialog');
+const outingForm = $('#outing-form');
+
+function blankState() {
+  return { outings: [], home: null, headed: null };
+}
+
+function loadState() {
+  try {
+    return { ...blankState(), ...JSON.parse(localStorage.getItem(STORE_KEY) || '{}') };
+  } catch {
+    return blankState();
+  }
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  } catch {
+    toast('This browser would not save that.');
+  }
+}
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const choose = (list) => list[Math.floor(Math.random() * list.length)];
+
+// Days are keyed by the local date, e.g. 2026-10-30.
+function dayKey(date = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+function keyDate(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function addDays(key, n) {
+  const d = keyDate(key);
+  d.setDate(d.getDate() + n);
+  return dayKey(d);
+}
+const longDate = (key) => keyDate(key).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+const monthName = (key) => keyDate(key).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const daysBetween = (a, b) => Math.round((keyDate(b) - keyDate(a)) / 864e5);
+const clock = (date) => date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const home = () => state.home || ROTTERDAM_NOORD;
+const newestFirst = (a, b) => b.day.localeCompare(a.day) || b.at - a.at;
+const outingsOn = (key) => state.outings.filter((o) => o.day === key).sort((a, b) => a.at - b.at);
+
+/* ---------- The sun ---------- */
+
+// Sunrise and sunset for a day and place, from the sunrise equation (good to a minute or two).
+function sunTimes(date, lat, lon) {
+  const rad = Math.PI / 180;
+  const sin = (d) => Math.sin(d * rad), cos = (d) => Math.cos(d * rad);
+  const noonJD = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12) / 864e5 + 2440587.5;
+  const n = Math.round(noonJD - 2451545 + 0.0008);
+  const meanNoon = n - lon / 360;
+  const M = (357.5291 + 0.98560028 * meanNoon) % 360;
+  const C = 1.9148 * sin(M) + 0.02 * sin(2 * M) + 0.0003 * sin(3 * M);
+  const L = (M + C + 180 + 102.9372) % 360;
+  const transit = 2451545 + meanNoon + 0.0053 * sin(M) - 0.0069 * sin(2 * L);
+  const decl = Math.asin(sin(L) * sin(23.4397)) / rad;
+  const cosH = (sin(-0.833) - sin(lat) * sin(decl)) / (cos(lat) * cos(decl));
+  const H = Math.acos(Math.max(-1, Math.min(1, cosH))) / rad;
+  const toDate = (jd) => new Date((jd - 2440587.5) * 864e5);
+  return { rise: toDate(transit - H / 360), set: toDate(transit + H / 360) };
+}
+
+function spanWords(ms) {
+  const mins = Math.round(ms / 6e4);
+  const h = Math.floor(mins / 60), m = mins % 60;
+  if (h && m) return `${h} hr ${m} min`;
+  return h ? `${h} hr` : `${m} min`;
+}
+
+// The light today: a line from sunrise to sunset with the sun where it is now.
+function lightHTML() {
+  const now = new Date();
+  const { lat, lon } = home();
+  const { rise, set } = sunTimes(now, lat, lon);
+  let words;
+  if (now < rise) {
+    words = `<strong>The sun rises at ${clock(rise)}</strong> and sets at ${clock(set)}.`;
+  } else if (now < set) {
+    const left = set - now;
+    words = left < 45 * 6e4
+      ? `<strong>The sun sets at ${clock(set)}.</strong> Just ${spanWords(left)} of light left. Go catch it.`
+      : `<strong>The sun sets at ${clock(set)}.</strong> About ${spanWords(left)} of light left today.`;
+  } else {
+    const next = sunTimes(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1), lat, lon);
+    words = `The sun set at ${clock(set)}. A walk after dark still counts. Tomorrow it rises at ${clock(next.rise)}.`;
+  }
+  // The line runs from 6:00 to 20:00, so the short days of winter look short.
+  const start = new Date(now); start.setHours(6, 0, 0, 0);
+  const pos = (d) => Math.max(0, Math.min(100, ((d - start) / (14 * 36e5)) * 100));
+  const up = now >= rise && now < set;
+  return `<div class="light">
+    <div class="sky${up ? '' : ' dark'}" aria-hidden="true">
+      <span class="day-span" style="left:${pos(rise)}%; right:${100 - pos(set)}%"></span>
+      <span class="sun${up ? '' : ' moon'}" style="left:${pos(now)}%"></span>
+      <span class="tick" style="left:${pos(rise)}%">${clock(rise)}</span>
+      <span class="tick" style="left:${pos(set)}%">${clock(set)}</span>
+    </div>
+    <p>${words}</p>
+  </div>`;
+}
+
+/* ---------- Take me somewhere ---------- */
+
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+
+// A random spot some way off in a random direction.
+function somewhereNear(from, way) {
+  const { min, max } = REACH[way];
+  const km = min + Math.random() * (max - min);
+  const bearing = Math.random() * 360;
+  const rad = Math.PI / 180;
+  return {
+    way,
+    lat: from.lat + (km * Math.cos(bearing * rad)) / 111.32,
+    lon: from.lon + (km * Math.sin(bearing * rad)) / (111.32 * Math.cos(from.lat * rad)),
+    km,
+    toward: COMPASS[Math.round(bearing / 45) % 8],
+  };
+}
+
+// A town further afield, favoring the ones not yet visited.
+function somewhereFurther() {
+  const been = new Set(state.outings.map((o) => o.place.toLowerCase()));
+  const fresh = FURTHER.filter((p) => !been.has(p.name.toLowerCase()));
+  return { way: 'further', ...choose(fresh.length ? fresh : FURTHER) };
+}
+
+// A kind of place, different from the one just offered.
+function somewhereKind(near, not) {
+  const others = KINDS.filter((k) => k.q !== not);
+  return { way: 'kind', ...choose(others), near };
+}
+
+// Links open Google Maps: a search near you for a kind of place, a town by name, or a spot.
+function mapsLink(p) {
+  if (p.way === 'kind') return `https://www.google.com/maps/search/${encodeURIComponent(p.q)}/@${p.near.lat.toFixed(5)},${p.near.lon.toFixed(5)},15z`;
+  const query = p.name ? `${p.name}, Netherlands` : `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function pickWords(p) {
+  if (p.way === 'kind') return `<h3>${esc(p.name)}</h3><p class="how">Find one near you in Maps, or wander until you come across one.</p>`;
+  if (p.name) return `<h3>${esc(p.name)}</h3><p class="how">By ${esc(p.how)}.</p>`;
+  const far = p.km < 1 ? `${Math.round(p.km * 10) * 100} m` : `${p.km.toFixed(1)} km`;
+  const way = p.way === 'bike' ? 'A ride' : 'A walk';
+  return `<h3>Somewhere ${far} ${p.toward}</h3><p class="how">${way} from where you are. Open the map to see what's there, or just head ${p.toward} and see.</p>`;
+}
+
+function pickHTML() {
+  if (!pick) {
+    return `<div class="card somewhere">
+      <h3 class="card-title">Take me somewhere</h3>
+      <p class="hint">Selma picks; you go. No research needed.</p>
+      <div class="row">
+        <button class="btn" data-action="pick" data-way="foot">A walk</button>
+        <button class="btn" data-action="pick" data-way="bike">A bike ride</button>
+        <button class="btn" data-action="pick" data-way="further">Further afield</button>
+        <button class="btn" data-action="pick" data-way="kind">A kind of place</button>
+        <button class="link" data-action="close-pick">Not now</button>
+      </div>
+    </div>`;
+  }
+  if (pick.finding) return `<div class="card somewhere"><p class="hint">Finding where you are…</p></div>`;
+  return `<div class="card somewhere">
+    ${pickWords(pick)}
+    <p class="noticing">On the way: ${esc(pick.noticing)}</p>
+    <div class="row">
+      <button class="btn primary" data-action="go">I'll go</button>
+      <a class="btn" href="${mapsLink(pick)}" target="_blank" rel="noopener">Open in Maps</a>
+      <button class="btn quiet" data-action="pick" data-way="${pick.way}">Somewhere else</button>
+      <button class="link" data-action="close-pick">Not now</button>
+    </div>
+  </div>`;
+}
+
+function headedHTML() {
+  const h = state.headed;
+  return `<div class="card headed">
+    <p class="eyebrow">You're headed out</p>
+    ${pickWords(h)}
+    <p class="noticing">On the way: ${esc(h.noticing)}</p>
+    <div class="row">
+      <button class="btn primary" data-action="back">I'm back</button>
+      <a class="btn" href="${mapsLink(h)}" target="_blank" rel="noopener">Open in Maps</a>
+      <button class="link" data-action="not-going">Not going after all</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- Where am I ---------- */
+
+function whereAmI() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('none'));
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      reject,
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60e3 },
+    );
+  });
+}
+
+/* ---------- Today ---------- */
+
+function outingHTML(o, { date = false, place = true } = {}) {
+  return `<li class="outing">
+    <span class="ways">${(o.ways || []).map((w) => `<i class="way-dot" style="--c: var(--${w})" title="${WAYS.find((x) => x.id === w)?.name || ''}"></i>`).join('')}</span>
+    <div class="body">
+      ${place ? `<p class="place">${esc(o.place)}${o.research ? ' <span class="tag">for the research</span>' : ''}</p>` : ''}
+      ${date ? `<p class="when">${longDate(o.day)}${!place && o.research ? ' <span class="tag">for the research</span>' : ''}</p>` : ''}
+      ${o.noticed ? `<p class="noticed">${esc(o.noticed)}</p>` : ''}
+    </div>
+    <button class="btn danger" data-action="edit-outing" data-id="${o.id}">Edit</button>
+  </li>`;
+}
+
+function weekStripHTML() {
+  const todayKey = dayKey();
+  const d = keyDate(todayKey);
+  const monday = addDays(todayKey, -((d.getDay() + 6) % 7));
+  let marks = '';
+  for (let i = 0; i < 7; i++) marks += markHTML(addDays(monday, i), todayKey, false);
+  return `<div class="this-week">
+    <p class="eyebrow">This week</p>
+    <div class="weeks">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<span class="wd">${x}</span>`).join('')}${marks}</div>
+  </div>`;
+}
+
+let picking = false;
+
+function renderToday() {
+  const todayKey = dayKey();
+  const outs = outingsOn(todayKey);
+  let main;
+  if (state.headed) {
+    main = headedHTML();
+  } else if (outs.length) {
+    main = `<div class="card been">
+      <p class="eyebrow">You've been out today</p>
+      <ul class="outing-list">${outs.map((o) => outingHTML(o)).join('')}</ul>
+      <div class="row">
+        <button class="btn quiet" data-action="note-outing">Note another</button>
+        ${picking ? '' : '<button class="link" data-action="open-pick">Take me somewhere</button>'}
+      </div>
+    </div>`;
+  } else {
+    main = `<div class="card nudge-out">
+      <h2>Not out yet today.</h2>
+      <p>Even ten minutes around the block counts.</p>
+      <div class="row">
+        <button class="btn primary" data-action="note-outing">I went out</button>
+        ${picking ? '' : '<button class="btn" data-action="open-pick">Take me somewhere</button>'}
+      </div>
+    </div>`;
+  }
+  $('#view-today').innerHTML = `
+    ${lightHTML()}
+    ${main}
+    ${picking && !state.headed ? pickHTML() : ''}
+    ${backupDue() ? `<p class="nudge">It's been a while since your last backup. <button class="link" data-action="export">Save one now</button> <button class="link" data-action="backup-later">Later</button></p>` : ''}
+    ${weekStripHTML()}`;
+}
+
+/* ---------- Trail and outings ---------- */
+
+function markHTML(key, todayKey, openable = true) {
+  const outs = outingsOn(key);
+  let cls = 'none', fill = '', what = 'stayed in';
+  if (key > todayKey) {
+    cls = 'ahead';
+    what = 'still ahead';
+  } else if (outs.length) {
+    const ways = WAYS.filter((w) => outs.some((o) => (o.ways || []).includes(w.id)));
+    const step = 100 / Math.max(ways.length, 1);
+    fill = ways.length > 1
+      ? `conic-gradient(${ways.map((w, i) => `var(--${w.id}) ${i * step}% ${(i + 1) * step}%`).join(', ')})`
+      : `var(--${ways[0]?.id || 'foot'})`;
+    cls = 'out';
+    what = 'out: ' + outs.map((o) => o.place).join(', ');
+  }
+  const label = `${longDate(key)}: ${what}`;
+  const inner = `<i${fill ? ` style="background: ${fill}"` : ''}></i>`;
+  const today = key === todayKey ? ' today' : '';
+  return openable && key <= todayKey
+    ? `<button class="mark ${cls}${today}" data-action="open-day" data-day="${key}" aria-pressed="${key === outingsDay}" aria-label="${esc(label)}" title="${esc(label)}">${inner}</button>`
+    : `<span class="mark ${cls}${today}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${inner}</span>`;
+}
+
+function waysLegend() {
+  return WAYS.map((w) => `<span><i class="way-dot" style="--c: var(--${w.id})"></i>${w.name}</span>`).join('');
+}
+
+function renderOutings() {
+  const todayKey = dayKey();
+  const start = keyDate(todayKey);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - 7 * (TRAIL_WEEKS - 1));
+  let marks = '';
+  for (let i = 0; i < TRAIL_WEEKS * 7; i++) marks += markHTML(addDays(dayKey(start), i), todayKey);
+
+  let dayPanel = '';
+  if (outingsDay) {
+    const outs = outingsOn(outingsDay);
+    dayPanel = `<div class="day-panel">
+      <h3>${longDate(outingsDay)}</h3>
+      ${outs.length ? `<ul class="outing-list">${outs.map((o) => outingHTML(o)).join('')}</ul>` : '<p class="quiet-note">Nothing noted this day.</p>'}
+      <button class="btn quiet" data-action="note-outing" data-day="${outingsDay}">Note an outing for this day</button>
+    </div>`;
+  }
+  $('#trail').innerHTML = `
+    <div class="weeks">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<span class="wd">${x}</span>`).join('')}${marks}</div>
+    <div class="legend">${waysLegend()}</div>
+    <p class="trail-key">A filled circle is a day you got out, in the colors of how you went. Choose a day to see it or add to it.</p>
+    ${dayPanel}`;
+
+  const any = state.outings.some((o) => o.research);
+  $('#outings-filter').innerHTML = any ? `<fieldset class="segmented">
+      <label><input type="radio" name="research-filter" value="all" ${researchOnly ? '' : 'checked'}><span>Every outing</span></label>
+      <label><input type="radio" name="research-filter" value="research" ${researchOnly ? 'checked' : ''}><span>For the research</span></label>
+    </fieldset>` : '';
+
+  const list = state.outings.filter((o) => !researchOnly || o.research).sort(newestFirst);
+  if (!list.length) {
+    $('#outings').innerHTML = `<div class="empty"><p>Where you go will gather here, newest first.</p></div>`;
+    return;
+  }
+  let html = '', month = '';
+  for (const o of list) {
+    const m = monthName(o.day);
+    if (m !== month) {
+      html += `${month ? '</ul>' : ''}<h2 class="month">${m}</h2><ul class="outing-list">`;
+      month = m;
+    }
+    html += outingHTML(o, { date: true });
+  }
+  $('#outings').innerHTML = html + '</ul>';
+}
+
+/* ---------- The map ---------- */
+
+// Places are grouped by name, so a park visited ten times is one bigger dot.
+function pinnedPlaces() {
+  const byName = new Map();
+  for (const o of state.outings) {
+    if (o.lat == null || o.lon == null) continue;
+    const key = o.place.trim().toLowerCase();
+    const p = byName.get(key) || { name: o.place, lat: o.lat, lon: o.lon, outings: [], research: false };
+    p.outings.push(o);
+    p.research ||= !!o.research;
+    byName.set(key, p);
+  }
+  return [...byName.values()];
+}
+
+const kmBetween = (a, b) => {
+  const rad = Math.PI / 180;
+  const dy = (a.lat - b.lat) * 111.32;
+  const dx = (a.lon - b.lon) * 111.32 * Math.cos(((a.lat + b.lat) / 2) * rad);
+  return Math.hypot(dx, dy);
+};
+
+function renderMap() {
+  const h = home();
+  const all = pinnedPlaces();
+  const NEAR_KM = 12;
+  const places = mapScope === 'near' ? all.filter((p) => kmBetween(p, h) <= NEAR_KM) : all;
+  const unpinned = state.outings.filter((o) => o.lat == null).length;
+
+  // Fit the dots and home in view, at least a couple of kilometres across. The paper is as wide
+  // as the page, and only as tall as the dots need (within limits).
+  const W = Math.round(Math.min(720, Math.max(300, $('#map').clientWidth || 720)));
+  const PAD = W < 500 ? 30 : 44, TALLEST = W < 500 ? 440 : 560;
+  const kx = 111.32 * Math.cos(h.lat * Math.PI / 180), ky = 111.32;
+  const pts = [h, ...places];
+  const xs = pts.map((p) => (p.lon - h.lon) * kx), ys = pts.map((p) => (h.lat - p.lat) * ky);
+  let minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const spanX = Math.max(maxX - minX, 2.5), spanY = Math.max(maxY - minY, 1);
+  const scale = Math.min((W - 2 * PAD) / spanX, (TALLEST - 2 * PAD) / spanY); // pixels per km
+  const H = Math.round(Math.max(W < 500 ? 280 : 360, spanY * scale + 2 * PAD + 30));
+  const span = Math.max(spanX, (W - 2 * PAD) / scale);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const X = (p) => W / 2 + ((p.lon - h.lon) * kx - cx) * scale;
+  const Y = (p) => H / 2 + ((h.lat - p.lat) * ky - cy) * scale;
+
+  // A scale bar of a round number of kilometres, about a fifth of the width.
+  const target = span / 5;
+  const bar = [0.5, 1, 2, 5, 10, 20, 50, 100].reduce((best, n) => Math.abs(n - target) < Math.abs(best - target) ? n : best, 1);
+  const barPx = bar * scale;
+
+  const dots = places.map((p, i) => {
+    const r = 7 + Math.sqrt(p.outings.length - 1) * 4;
+    const way = p.outings.slice().sort(newestFirst)[0].ways?.[0] || 'foot';
+    const open = mapPlace === p.name.toLowerCase();
+    return `<g class="pin${open ? ' open' : ''}" data-action="open-place" data-place="${esc(p.name.toLowerCase())}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${p.outings.length === 1 ? 'once' : p.outings.length + ' times'}">
+      ${p.research ? `<circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${(r + 4).toFixed(1)}" class="research-ring"/>` : ''}
+      <circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${r.toFixed(1)}" style="fill: var(--${way})"/>
+      <circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${(r + 12).toFixed(1)}" class="hit"/>
+    </g>`;
+  }).join('');
+
+  const opened = mapPlace && all.find((p) => p.name.toLowerCase() === mapPlace);
+  $('#map').innerHTML = `
+    <div class="map-top">
+      <fieldset class="segmented">
+        <label><input type="radio" name="map-scope" value="near" ${mapScope === 'near' ? 'checked' : ''}><span>Near home</span></label>
+        <label><input type="radio" name="map-scope" value="all" ${mapScope === 'all' ? 'checked' : ''}><span>Everywhere</span></label>
+      </fieldset>
+    </div>
+    <div class="map-paper">
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="A map of the places you've been">
+        <g class="compass" transform="translate(${W - 34} 40)"><path d="M0 -14 L5 4 L0 0 L-5 4 Z"/><text y="22" text-anchor="middle">N</text></g>
+        ${dots}
+        <g class="home" transform="translate(${X(h).toFixed(1)} ${Y(h).toFixed(1)})"><path d="M-7 1 L0 -7 L7 1 V8 H-7 Z"/></g>
+        <g class="scale" transform="translate(${PAD} ${H - 24})">
+          <path d="M0 -5 V0 H${barPx.toFixed(1)} V-5"/>
+          <text x="${(barPx / 2).toFixed(1)}" y="-9" text-anchor="middle">${bar} km</text>
+        </g>
+      </svg>
+      ${places.length ? '' : `<p class="map-empty">${all.length ? 'Nothing pinned near home yet. Try Everywhere.' : 'Your map draws itself. Each place you pin adds a dot.'}</p>`}
+    </div>
+    ${opened ? `<div class="day-panel">
+      <h3>${esc(opened.name)}</h3>
+      <ul class="outing-list">${opened.outings.slice().sort(newestFirst).map((o) => outingHTML(o, { date: true, place: false })).join('')}</ul>
+    </div>` : ''}
+    <div class="legend">${waysLegend()}<span><i class="way-dot ring"></i>For the research</span><span><i class="home-key"></i>Home</span></div>
+    <p class="trail-key">Bigger dots are places you keep going back to.${unpinned ? ` ${unpinned === 1 ? 'One outing has' : unpinned + ' outings have'} no pin, so ${unpinned === 1 ? "it isn't" : "they aren't"} on the map.` : ''}</p>`;
+}
+
+/* ---------- Navigation ---------- */
+
+const RENDER = { today: renderToday, map: renderMap, outings: renderOutings };
+let view = 'today';
+
+function show(next) {
+  view = next;
+  for (const tab of document.querySelectorAll('.tab')) {
+    if (tab.dataset.view === view) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
+  for (const name of Object.keys(RENDER)) $(`#view-${name}`).hidden = name !== view;
+  RENDER[view]();
+}
+
+let toastTimer;
+function toast(message) {
+  const el = $('#toast');
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+/* ---------- Noting an outing ---------- */
+
+function setPin(lat, lon, words) {
+  outingForm.elements.lat.value = lat ?? '';
+  outingForm.elements.lon.value = lon ?? '';
+  $('#pin-status').textContent = words;
+}
+
+function openOutingDialog(existing, day = '', from = null) {
+  outingForm.reset();
+  const f = outingForm.elements;
+  f.id.value = existing?.id || '';
+  f.day.value = existing?.day || day || '';
+  const theDay = f.day.value || dayKey();
+  $('#outing-heading').textContent = existing ? 'Your outing' : theDay === dayKey() ? 'You went out' : 'An outing';
+  $('#outing-day').textContent = theDay === dayKey() ? '' : longDate(theDay);
+  $('#remove-outing').hidden = !existing;
+
+  const ways = existing?.ways || (from ? [from.way] : []);
+  $('#ways').innerHTML = '<legend>How <span class="optional">as many as apply</span></legend>' + WAYS.map((w) =>
+    `<label><input type="checkbox" name="ways" value="${w.id}" ${ways.includes(w.id) ? 'checked' : ''}><span>${w.name}</span></label>`).join('');
+
+  const names = [...new Set([...state.outings].sort((a, b) => b.at - a.at).map((o) => o.place))];
+  $('#places').innerHTML = names.map((n) => `<option value="${esc(n)}">`).join('');
+
+  f.place.value = existing?.place || (from?.way !== 'kind' && from?.name) || '';
+  f.place.placeholder = from?.way === 'kind' ? 'Where did you end up?' : 'e.g., Kralingse Plas, the Zwaanshals, Gouda';
+  f.noticed.value = existing?.noticed || '';
+  f.research.checked = !!existing?.research;
+  f.noticed.placeholder = from?.noticing || choose(NOTICINGS);
+
+  if (existing?.lat != null) setPin(existing.lat, existing.lon, 'Pinned on the map.');
+  else if (from?.lat != null) setPin(from.lat, from.lon, from.name ? `Pinned at ${from.name}.` : 'Pinned where Selma sent you. Pin where you are if you ended up elsewhere.');
+  else setPin(null, null, 'No pin yet. That is fine.');
+  outingDialog.showModal();
+}
+
+// Typing a place you've been before brings its pin along.
+outingForm.elements.place.addEventListener('input', (event) => {
+  const name = event.target.value.trim().toLowerCase();
+  const before = state.outings.find((o) => o.place.trim().toLowerCase() === name && o.lat != null)
+    || FURTHER.find((p) => p.name.toLowerCase() === name);
+  if (before) setPin(before.lat, before.lon, 'Pinned where you were before.');
+});
+
+/* ---------- Actions ---------- */
+
+document.addEventListener('click', async (event) => {
+  const tab = event.target.closest('.tab');
+  if (tab) return show(tab.dataset.view);
+  const el = event.target.closest('[data-action]');
+  if (!el) return;
+  const { action } = el.dataset;
+
+  if (action === 'note-outing') openOutingDialog(null, el.dataset.day);
+  else if (action === 'edit-outing') openOutingDialog(state.outings.find((o) => o.id === el.dataset.id));
+  else if (action === 'close-dialog') el.closest('dialog').close();
+  else if (action === 'open-pick') { picking = true; pick = null; renderToday(); }
+  else if (action === 'close-pick') { picking = false; pick = null; renderToday(); }
+  else if (action === 'pick') {
+    const way = el.dataset.way;
+    const noticing = choose(NOTICINGS);
+    if (way === 'further') {
+      pick = { ...somewhereFurther(), noticing };
+    } else {
+      const was = pick;
+      pick = { finding: true, q: was?.q };
+      renderToday();
+      let from;
+      try { from = await whereAmI(); } catch { from = home(); toast('Starting from home, since your location is off.'); }
+      pick = way === 'kind' ? { ...somewhereKind(from, pick?.q), noticing } : { ...somewhereNear(from, way), noticing };
+    }
+    renderToday();
+  } else if (action === 'go') {
+    state.headed = pick;
+    picking = false;
+    pick = null;
+    save();
+    renderToday();
+    toast('Enjoy it.');
+  } else if (action === 'back') {
+    openOutingDialog(null, '', state.headed);
+  } else if (action === 'not-going') {
+    state.headed = null;
+    save();
+    renderToday();
+  } else if (action === 'pin-here') {
+    $('#pin-status').textContent = 'Finding where you are…';
+    try {
+      const at = await whereAmI();
+      setPin(at.lat, at.lon, 'Pinned where you are now.');
+    } catch {
+      $('#pin-status').textContent = 'Could not find you. It can stay unpinned.';
+    }
+  } else if (action === 'remove-outing') {
+    if (!confirm('Remove this outing? It cannot be brought back.')) return;
+    state.outings = state.outings.filter((o) => o.id !== outingForm.elements.id.value);
+    save();
+    outingDialog.close();
+    RENDER[view]();
+  } else if (action === 'open-day') {
+    outingsDay = outingsDay === el.dataset.day ? null : el.dataset.day;
+    renderOutings();
+  } else if (action === 'open-place') {
+    mapPlace = mapPlace === el.dataset.place ? null : el.dataset.place;
+    renderMap();
+  } else if (action === 'set-home') {
+    try {
+      const at = await whereAmI();
+      state.home = { ...at, name: 'where you set it' };
+      save();
+      renderHome();
+      RENDER[view]();
+      toast('Home is set. Sunset times and the map follow it.');
+    } catch {
+      toast('Could not find you. Home stays where it was.');
+    }
+  } else if (action === 'export') exportBackup();
+  else if (action === 'import') $('#import-file').click();
+  else if (action === 'backup-later') {
+    localStorage.setItem(BACKUP_KEY + '-later', addDays(dayKey(), 3));
+    renderToday();
+  }
+});
+
+// Pins on the map open with the keyboard as well.
+document.addEventListener('keydown', (event) => {
+  if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.pin')) {
+    event.preventDefault();
+    event.target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  }
+});
+
+document.addEventListener('change', (event) => {
+  const el = event.target;
+  if (el.name === 'research-filter') { researchOnly = el.value === 'research'; renderOutings(); }
+  else if (el.name === 'map-scope') { mapScope = el.value; mapPlace = null; renderMap(); }
+});
+
+outingForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const data = new FormData(outingForm);
+  const text = (name) => (data.get(name) || '').trim();
+  const ways = data.getAll('ways');
+  if (!ways.length) return toast('Choose how you went.');
+  const num = (name) => (text(name) === '' ? null : Number(text(name)));
+  const fields = {
+    ways,
+    place: text('place'),
+    lat: num('lat'),
+    lon: num('lon'),
+    noticed: text('noticed'),
+    research: data.get('research') === 'on',
+  };
+  const existing = state.outings.find((o) => o.id === text('id'));
+  if (existing) Object.assign(existing, fields);
+  else {
+    state.outings.push({ id: newId(), at: Date.now(), day: text('day') || dayKey(), ...fields });
+    if (state.headed && !text('day')) state.headed = null;
+  }
+  save();
+  outingDialog.close();
+  RENDER[view]();
+  toast(existing ? 'Saved.' : 'Kept. Glad you went.');
+});
+
+/* ---------- Home and backup ---------- */
+
+function renderHome() {
+  $('#home-status').textContent = state.home
+    ? 'Sunset times and the map center on the home you set.'
+    : 'Sunset times and the map center on Rotterdam-Noord.';
+}
+
+function renderBackup() {
+  const last = localStorage.getItem(BACKUP_KEY);
+  $('#backup-status').textContent = last ? `Last backup saved ${longDate(last)}.` : 'No backup saved yet.';
+}
+
+function exportBackup() {
+  const file = new Blob([JSON.stringify({ app: 'selma-roam', version: 1, data: state }, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(file);
+  link.download = `selma-roam-backup-${dayKey()}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  localStorage.setItem(BACKUP_KEY, dayKey());
+  renderBackup();
+  RENDER[view]();
+}
+
+// A gentle reminder on Today: a week after the first outing if there has never been a backup,
+// or two weeks after the last one. "Later" puts it off for three days.
+function backupDue() {
+  const days = state.outings.map((o) => o.day).sort();
+  if (!days.length) return false;
+  const later = localStorage.getItem(BACKUP_KEY + '-later');
+  if (later && later > dayKey()) return false;
+  const last = localStorage.getItem(BACKUP_KEY);
+  return last ? daysBetween(last, dayKey()) >= 14 : daysBetween(days[0], dayKey()) >= 7;
+}
+
+// Restoring replaces everything on this device with what the backup holds.
+$('#import-file').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  let data;
+  try {
+    const parsed = JSON.parse(await file.text());
+    data = parsed.app === 'selma-roam' ? parsed.data : parsed;
+    if (!Array.isArray(data.outings)) throw new Error();
+  } catch {
+    return toast('That file is not a Selma roaming journal backup.');
+  }
+  if (!confirm(`Replace everything on this device with this backup? It holds ${data.outings.length} outings. What is here now will be gone.`)) return;
+  for (const key of Object.keys(state)) delete state[key];
+  Object.assign(state, blankState(), data);
+  save();
+  show(view);
+  toast('Restored.');
+});
+
+renderHome();
+renderBackup();
+show('today');
+
+// The map is drawn to the width of the page, so it is redrawn when that changes.
+let resizeTimer;
+addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => view === 'map' && renderMap(), 200);
+});
+
+// The light changes through the day, so Today is redrawn each minute unless a dialog is open.
+setInterval(() => {
+  if (view === 'today' && !outingDialog.open) renderToday();
+}, 60 * 1000);
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}

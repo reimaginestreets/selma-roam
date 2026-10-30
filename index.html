@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Selma — a slow roaming journal</title>
+  <meta name="description" content="A nudge to get out into the world while the light lasts, and a little map of where you went.">
+  <meta name="theme-color" content="#F6F3EE">
+  <link rel="icon" href="selma-roam.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-title" content="Slow roams">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="home-link" href="../selma/">← All Selma journals</a>
+    <div class="brand">
+      <img class="selma" src="selma-roam.svg" width="56" height="56" alt="Selma the Snail, with a little street map for a shell">
+      <div>
+        <h1>Selma</h1>
+        <p>a slow roaming journal</p>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Sections">
+      <button class="tab" data-view="today" aria-current="page">Today</button>
+      <button class="tab" data-view="map">Map</button>
+      <button class="tab" data-view="outings">Outings</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-today"></section>
+
+    <section id="view-map" hidden>
+      <div id="map"></div>
+    </section>
+
+    <section id="view-outings" hidden>
+      <div id="trail"></div>
+      <div id="outings-filter"></div>
+      <div id="outings"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>No distances, no pace, no streaks. Everything stays in this browser. <span id="backup-status"></span></p>
+    <p class="home-spot"><span id="home-status"></span> <button class="link" data-action="set-home">Set home to where I am</button></p>
+    <a class="link" href="../selma-time/">Slow time journal</a>
+    <a class="link" href="../selma-work/">Slow work journal</a>
+    <div class="backup">
+      <button class="btn quiet" data-action="export">Save a backup</button>
+      <button class="btn quiet" data-action="import">Restore from backup</button>
+      <input type="file" id="import-file" accept=".json,application/json" hidden>
+    </div>
+  </footer>
+
+  <!-- Noting an outing -->
+  <dialog id="outing-dialog">
+    <form id="outing-form">
+      <h2 id="outing-heading">You went out</h2>
+      <p class="for-day" id="outing-day"></p>
+      <input type="hidden" name="id">
+      <input type="hidden" name="day">
+      <input type="hidden" name="lat">
+      <input type="hidden" name="lon">
+      <fieldset class="segmented" id="ways">
+        <legend>How</legend>
+      </fieldset>
+      <label>Where
+        <input name="place" required autocomplete="off" maxlength="120" list="places" placeholder="e.g., Kralingse Plas, the Zwaanshals, Gouda">
+        <datalist id="places"></datalist>
+      </label>
+      <div class="pin-row">
+        <button type="button" class="btn quiet small" data-action="pin-here">Pin where I am</button>
+        <span id="pin-status" class="optional"></span>
+      </div>
+      <label><span id="noticed-label">One thing you noticed</span> <span class="optional">optional, a line is plenty</span>
+        <textarea name="noticed" rows="2" maxlength="600"></textarea>
+      </label>
+      <label class="check"><input type="checkbox" name="research"> For the research</label>
+      <div class="dialog-actions">
+        <button type="button" class="btn danger" data-action="remove-outing" id="remove-outing" hidden>Remove</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn quiet" data-action="close-dialog">Cancel</button>
+        <button type="submit" class="btn primary">Keep it</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="places.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
