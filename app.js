@@ -163,10 +163,24 @@ function somewhereFurther() {
   return { way: 'further', ...choose(fresh.length ? fresh : FURTHER) };
 }
 
-// A kind of place, different from the one just offered.
-function somewhereKind(near, not) {
-  const others = KINDS.filter((k) => k.q !== not);
-  return { way: 'kind', ...choose(others), near };
+// A kind of place: the one asked for, or a surprise different from the one just offered.
+function somewhereKind(near, q, not) {
+  const asked = KINDS.find((k) => k.q === q);
+  return { way: 'kind', ...(asked || choose(KINDS.filter((k) => k.q !== not))), near, surprise: !asked };
+}
+
+// The list of kinds, for when there's something particular in mind.
+function kindsHTML() {
+  const plain = (name) => name.replace(/^A /, '').replace(/^./, (c) => c.toUpperCase());
+  return `<div class="card somewhere">
+    <h3 class="card-title">What kind of place?</h3>
+    <p class="hint">Choose one, or let Selma pick.</p>
+    <div class="row kinds">
+      <button class="btn primary small" data-action="pick" data-way="kind" data-kind="">Surprise me</button>
+      ${KINDS.map((k) => `<button class="btn small" data-action="pick" data-way="kind" data-kind="${esc(k.q)}">${esc(plain(k.name))}</button>`).join('')}
+    </div>
+    <div class="row"><button class="link" data-action="open-pick">Back</button></div>
+  </div>`;
 }
 
 // Links open Google Maps: a search near you for a kind of place, a town by name, or a spot.
@@ -198,6 +212,7 @@ function pickHTML() {
       </div>
     </div>`;
   }
+  if (pick.choosingKind) return kindsHTML();
   if (pick.finding) return `<div class="card somewhere"><p class="hint">Finding where you are…</p></div>`;
   return `<div class="card somewhere">
     ${pickWords(pick)}
@@ -205,7 +220,10 @@ function pickHTML() {
     <div class="row">
       <button class="btn primary" data-action="go">I'll go</button>
       <a class="btn" href="${mapsLink(pick)}" target="_blank" rel="noopener">Open in Maps</a>
-      <button class="btn quiet" data-action="pick" data-way="${pick.way}">Somewhere else</button>
+      ${pick.way === 'kind'
+        ? `${pick.surprise ? `<button class="btn quiet" data-action="pick" data-way="kind" data-kind="">Surprise me again</button>` : ''}
+      <button class="btn quiet" data-action="pick" data-way="kind">Another kind</button>`
+        : `<button class="btn quiet" data-action="pick" data-way="${pick.way}">Somewhere else</button>`}
       <button class="link" data-action="close-pick">Not now</button>
     </div>
   </div>`;
@@ -569,6 +587,10 @@ document.addEventListener('click', async (event) => {
   else if (action === 'close-pick') { picking = false; pick = null; renderToday(); }
   else if (action === 'pick') {
     const way = el.dataset.way;
+    if (way === 'kind' && el.dataset.kind === undefined) {
+      pick = { choosingKind: true, q: pick?.q };
+      return renderToday();
+    }
     const noticing = choose(NOTICINGS);
     if (way === 'further') {
       pick = { ...somewhereFurther(), noticing };
@@ -578,7 +600,7 @@ document.addEventListener('click', async (event) => {
       renderToday();
       let from;
       try { from = await whereAmI(); } catch { from = home(); toast('Starting from home, since your location is off.'); }
-      pick = way === 'kind' ? { ...somewhereKind(from, pick?.q), noticing } : { ...somewhereNear(from, way), noticing };
+      pick = way === 'kind' ? { ...somewhereKind(from, el.dataset.kind, was?.q), noticing } : { ...somewhereNear(from, way), noticing };
     }
     renderToday();
   } else if (action === 'go') {
