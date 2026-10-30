@@ -493,6 +493,26 @@ function setPin(lat, lon, words) {
   outingForm.elements.lat.value = lat ?? '';
   outingForm.elements.lon.value = lon ?? '';
   $('#pin-status').textContent = words;
+  $('#found').hidden = true;
+}
+
+// Looks up a place by name on OpenStreetMap, nearest to home first, for outings noted afterward.
+// Only the name typed is sent.
+let found = [];
+async function findPlace(name) {
+  const h = home();
+  const box = [h.lon - 0.4, h.lat + 0.25, h.lon + 0.4, h.lat - 0.25].map((n) => n.toFixed(4)).join(',');
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=nl&accept-language=en&viewbox=${box}&q=${encodeURIComponent(name)}`;
+  const results = await fetch(url).then((r) => r.json());
+  return results
+    .map((r) => {
+      const a = r.address || {};
+      const street = [a.road || a.pedestrian || a.footway, a.house_number].filter(Boolean).join(' ');
+      const town = a.city || a.town || a.village || a.municipality || '';
+      return { lat: Number(r.lat), lon: Number(r.lon), title: r.name || name, where: [street, town].filter(Boolean).join(', ') };
+    })
+    .sort((a, b) => kmBetween(a, h) - kmBetween(b, h))
+    .slice(0, 4);
 }
 
 function openOutingDialog(existing, day = '', from = null) {
@@ -520,7 +540,8 @@ function openOutingDialog(existing, day = '', from = null) {
 
   if (existing?.lat != null) setPin(existing.lat, existing.lon, 'Pinned on the map.');
   else if (from?.lat != null) setPin(from.lat, from.lon, from.name ? `Pinned at ${from.name}.` : 'Pinned where Selma sent you. Pin where you are if you ended up elsewhere.');
-  else setPin(null, null, 'No pin yet. That is fine.');
+  else setPin(null, null, '');
+  found = [];
   outingDialog.showModal();
 }
 
@@ -579,8 +600,30 @@ document.addEventListener('click', async (event) => {
       const at = await whereAmI();
       setPin(at.lat, at.lon, 'Pinned where you are now.');
     } catch {
-      $('#pin-status').textContent = 'Could not find you. It can stay unpinned.';
+      $('#pin-status').textContent = "Couldn't find where you are.";
     }
+  } else if (action === 'find-place') {
+    const name = outingForm.elements.place.value.trim();
+    if (!name) {
+      $('#pin-status').textContent = 'Type where you went first.';
+      return outingForm.elements.place.focus();
+    }
+    $('#pin-status').textContent = 'Looking…';
+    try {
+      found = await findPlace(name);
+    } catch {
+      found = [];
+    }
+    if (!found.length) {
+      $('#pin-status').textContent = "Couldn't find it. It can go without a pin.";
+      return;
+    }
+    $('#pin-status').textContent = found.length === 1 ? 'Is this the one?' : 'Which one?';
+    $('#found').innerHTML = found.map((f, i) => `<li><button type="button" data-action="choose-found" data-i="${i}"><b>${esc(f.title)}</b>${f.where ? ` <span>${esc(f.where)}</span>` : ''}</button></li>`).join('');
+    $('#found').hidden = false;
+  } else if (action === 'choose-found') {
+    const f = found[Number(el.dataset.i)];
+    if (f) setPin(f.lat, f.lon, `Pinned at ${f.where || f.title}.`);
   } else if (action === 'remove-outing') {
     if (!confirm('Remove this outing? It cannot be brought back.')) return;
     state.outings = state.outings.filter((o) => o.id !== outingForm.elements.id.value);

@@ -294,6 +294,12 @@ button.mark { cursor: pointer; }
 .map-paper + .day-panel { margin-top: 16px; }
 
 dialog .pin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: -4px; font-size: 14px; }
+#found { list-style: none; margin: -4px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+#found li + li { border-top: 1px solid var(--line); }
+#found button { display: block; width: 100%; text-align: left; font: inherit; font-size: 15px; color: var(--ink); background: var(--field); border: 0; padding: 9px 12px; cursor: pointer; }
+#found button:hover { background: var(--sage-soft); }
+#found b { font-weight: 500; }
+#found span { color: var(--muted); font-size: 14px; }
 .home-spot { flex-basis: 100%; }
 
 @media (max-width: 560px) {
