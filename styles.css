@@ -308,3 +308,8 @@ dialog .pin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap
   .card h2 { font-size: 24px; }
 }
 .row.kinds { margin-bottom: 12px; }
+.map-paper .biebs circle { fill: var(--surface); stroke: var(--sage); stroke-width: 1.5; pointer-events: none; }
+.map-paper .biebs circle.been { fill: var(--sage); }
+.bieb-key { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--sage); background: var(--surface); flex: none; }
+.bieb-key.been { background: var(--sage); }
+#stops[hidden] { display: none; }
