@@ -33,7 +33,7 @@ const outingDialog = $('#outing-dialog');
 const outingForm = $('#outing-form');
 
 function blankState() {
-  return { outings: [], home: null, headed: null };
+  return { outings: [], removed: [], home: null, headed: null };
 }
 
 function loadState() {
@@ -728,7 +728,9 @@ document.addEventListener('click', async (event) => {
     if (f) setPin(f.lat, f.lon, `Pinned at ${f.where || f.title}.`);
   } else if (action === 'remove-outing') {
     if (!confirm('Remove this outing? It cannot be brought back.')) return;
-    state.outings = state.outings.filter((o) => o.id !== outingForm.elements.id.value);
+    const id = outingForm.elements.id.value;
+    state.outings = state.outings.filter((o) => o.id !== id);
+    state.removed.push(id); // so bringing in an older backup doesn't bring it back
     save();
     outingDialog.close();
     RENDER[view]();
@@ -788,6 +790,7 @@ outingForm.addEventListener('submit', (event) => {
   };
   const existing = state.outings.find((o) => o.id === text('id'));
   if (dialogStops.length) fields.biebs = dialogStops.length > 1 ? data.getAll('stops') : [dialogStops[0].id];
+  fields.edited = Date.now();
   if (existing) Object.assign(existing, fields);
   else {
     state.outings.push({ id: newId(), at: Date.now(), day: text('day') || dayKey(), ...fields });
@@ -812,13 +815,26 @@ function renderBackup() {
   $('#backup-status').textContent = last ? `Last backup saved ${longDate(last)}.` : 'No backup saved yet.';
 }
 
-function exportBackup() {
-  const file = new Blob([JSON.stringify({ app: 'selma-roam', version: 1, data: state }, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(file);
-  link.download = `selma-roam-backup-${dayKey()}.json`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+// On a phone the backup goes to the share sheet, so it can be AirDropped or saved to Files;
+// elsewhere it downloads.
+async function exportBackup() {
+  const name = `selma-roam-backup-${dayKey()}.json`;
+  const json = JSON.stringify({ app: 'selma-roam', version: 1, data: state }, null, 2);
+  const file = new File([json], name, { type: 'application/json' });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      return toast("Couldn't share the backup.");
+    }
+  } else {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(file);
+    link.download = name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
   localStorage.setItem(BACKUP_KEY, dayKey());
   renderBackup();
   RENDER[view]();
@@ -835,7 +851,31 @@ function backupDue() {
   return last ? daysBetween(last, dayKey()) >= 14 : daysBetween(days[0], dayKey()) >= 7;
 }
 
-// Restoring replaces everything on this device with what the backup holds.
+// Bringing in a backup adds to what's here rather than replacing it, so the phone and the computer
+// can trade backups both ways. Where both have an outing, the one edited last wins; one removed on
+// either stays removed. Home and where you're headed stay as they are here, unless this device
+// has none.
+function mergeIn(data) {
+  const removed = new Set([...state.removed, ...(data.removed || [])]);
+  const when = (o) => o.edited || o.at || 0;
+  const byId = new Map(state.outings.map((o) => [o.id, o]));
+  let added = 0, updated = 0;
+  for (const o of data.outings) {
+    if (!o?.id || removed.has(o.id)) continue;
+    const here = byId.get(o.id);
+    if (!here) { byId.set(o.id, o); added++; }
+    else if (when(o) > when(here)) { byId.set(o.id, o); updated++; }
+  }
+  const gone = state.outings.filter((o) => removed.has(o.id)).length;
+  state.outings = [...byId.values()].filter((o) => !removed.has(o.id));
+  state.removed = [...removed];
+  state.home ||= data.home || null;
+  state.headed ||= data.headed || null;
+  return { added, updated, gone };
+}
+
+const countWords = (n, one) => `${n === 1 ? 'one' : n} ${one}${n === 1 ? '' : 's'}`;
+
 $('#import-file').addEventListener('change', async (event) => {
   const file = event.target.files[0];
   event.target.value = '';
@@ -848,12 +888,11 @@ $('#import-file').addEventListener('change', async (event) => {
   } catch {
     return toast('That file is not a Selma roaming journal backup.');
   }
-  if (!confirm(`Replace everything on this device with this backup? It holds ${data.outings.length} outings. What is here now will be gone.`)) return;
-  for (const key of Object.keys(state)) delete state[key];
-  Object.assign(state, blankState(), data);
+  const { added, updated, gone } = mergeIn(data);
   save();
   show(view);
-  toast('Restored.');
+  const said = [added && `added ${countWords(added, 'outing')}`, updated && `updated ${countWords(updated, 'outing')}`, gone && `removed ${countWords(gone, 'outing')} you'd removed on the other device`].filter(Boolean);
+  toast(said.length ? `Brought in: ${said.join(', ')}.` : 'Already up to date. Nothing new in that backup.');
 });
 
 renderHome();

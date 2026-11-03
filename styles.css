@@ -313,3 +313,4 @@ dialog .pin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap
 .bieb-key { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--sage); background: var(--surface); flex: none; }
 .bieb-key.been { background: var(--sage); }
 #stops[hidden] { display: none; }
+footer .backup-how { flex-basis: 100%; }
