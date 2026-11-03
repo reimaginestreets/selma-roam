@@ -90,3 +90,16 @@ const KINDS = [
   { name: 'A stationery shop', q: 'stationery shop' },
   { name: 'A windmill', q: 'windmill' },
 ];
+
+// Something to look for on a woonerf visit, for the research. Offered in place of the usual noticing.
+const WOONERF_NOTICINGS = [
+  'What tells a driver this is a woonerf, and do they take the hint?',
+  'Where do the cars park, and how much of the street does that take?',
+  'Is there anywhere to sit, play or linger? Is anyone?',
+  'Where does the woonerf begin and end? How can you tell?',
+  'Is there a kerb? What is the paving saying?',
+  'Watch one car come through. How fast, and who gives way?',
+  'What have the people who live here added: plants, benches, chalk?',
+  'Who is out here, and what are they doing?',
+  'If no car came for an hour, what would this street be for?',
+];

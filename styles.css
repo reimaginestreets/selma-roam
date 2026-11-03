@@ -314,3 +314,7 @@ dialog .pin-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap
 .bieb-key.been { background: var(--sage); }
 #stops[hidden] { display: none; }
 footer .backup-how { flex-basis: 100%; }
+.map-paper .woonerven path { fill: none; stroke: var(--clay); stroke-opacity: .35; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.map-paper .woonerven path.been { stroke-opacity: 1; stroke-width: 3.5; }
+.woonerf-key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--clay); opacity: .4; flex: none; }
+.woonerf-key.been { opacity: 1; height: 4px; }
