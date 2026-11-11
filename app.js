@@ -528,9 +528,10 @@ function pinnedPlaces() {
     if (o.lat == null || o.lon == null) continue;
     const name = o.place.trim().toLowerCase();
     let p = places.find((q) => q.name.trim().toLowerCase() === name && kmBetween(q, o) <= 0.3);
-    if (!p) places.push(p = { name: o.place, lat: o.lat, lon: o.lon, outings: [], research: false });
+    if (!p) places.push(p = { name: o.place, lat: o.lat, lon: o.lon, outings: [], research: false, bieb: false });
     p.outings.push(o);
     p.research ||= !!o.research;
+    p.bieb ||= !!(o.biebs?.length || o.minibieb);
   }
   return places;
 }
@@ -577,7 +578,8 @@ function renderMap() {
     const way = p.outings.slice().sort(newestFirst)[0].ways?.[0] || 'foot';
     const open = mapPlace === placeKey(p);
     return `<g class="pin${open ? ' open' : ''}" data-action="open-place" data-place="${esc(placeKey(p))}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${p.outings.length === 1 ? 'once' : p.outings.length + ' times'}">
-      ${p.research ? `<circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${(r + 4).toFixed(1)}" class="research-ring"/>` : ''}
+      ${p.bieb ? `<circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${(r + 4).toFixed(1)}" class="bieb-ring"/>` : ''}
+      ${p.research ? `<circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${(r + (p.bieb ? 8 : 4)).toFixed(1)}" class="research-ring"/>` : ''}
       <circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${r.toFixed(1)}" style="fill: var(--${way})"/>
       <circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${(r + 12).toFixed(1)}" class="hit"/>
     </g>`;
@@ -623,7 +625,7 @@ function renderMap() {
       <h3>${esc(opened.name)}</h3>
       <ul class="outing-list">${opened.outings.slice().sort(newestFirst).map((o) => outingHTML(o, { date: true, place: false })).join('')}</ul>
     </div>` : ''}
-    <div class="legend">${waysLegend()}<span><i class="way-dot ring"></i>For the research</span><span><i class="home-key"></i>Home</span><span><i class="bieb-key"></i>A mini bieb</span><span><i class="woonerf-key"></i>A woonerf</span></div>
+    <div class="legend">${waysLegend()}<span><i class="way-dot ring"></i>For the research</span><span><i class="home-key"></i>Home</span><span><i class="way-dot ring bieb"></i>A mini bieb visit</span><span><i class="bieb-key"></i>A mini bieb</span><span><i class="woonerf-key"></i>A woonerf</span></div>
     <p class="trail-key">Bigger dots are places you keep going back to.${unpinned ? ` ${unpinned === 1 ? 'One outing has' : unpinned + ' outings have'} no pin, so ${unpinned === 1 ? "it isn't" : "they aren't"} on the map.` : ''} Mini biebs and woonerven fill in once you've been. They're from <a class="link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.</p>`;
 }
 

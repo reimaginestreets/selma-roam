@@ -285,7 +285,7 @@ button.mark { cursor: pointer; }
 .map-paper .pin circle { stroke: var(--surface); stroke-width: 2; }
 .map-paper .pin .hit { fill: transparent; stroke: none; }
 .map-paper .pin .research-ring { fill: none; stroke: var(--clay-deep); stroke-width: 2; }
-.map-paper .pin.open circle:not(.hit):not(.research-ring), .map-paper .pin:focus-visible circle:not(.hit):not(.research-ring) { stroke: var(--ink); stroke-width: 3; }
+.map-paper .pin.open circle:not(.hit):not(.research-ring):not(.bieb-ring), .map-paper .pin:focus-visible circle:not(.hit):not(.research-ring):not(.bieb-ring) { stroke: var(--ink); stroke-width: 3; }
 .map-paper .home path { fill: var(--ink); stroke: var(--surface); stroke-width: 2; pointer-events: none; }
 .map-paper .compass path { fill: var(--muted); }
 .map-paper text { font: 500 12px var(--sans); fill: var(--muted); }
@@ -327,3 +327,5 @@ dialog .check-row #bieb-status { font-size: 14px; }
 .later li span { flex: 1 1 100%; }
 @media (min-width: 560px) { .later li span { flex: 1 1 auto; } }
 .later .quiet-link { color: var(--muted); }
+.map-paper .pin .bieb-ring { fill: none; stroke: var(--sage-deep); stroke-width: 2; stroke-dasharray: 2.5 2.5; }
+.way-dot.ring.bieb { border: 2px dotted var(--sage-deep); }

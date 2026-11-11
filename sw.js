@@ -1,7 +1,7 @@
 // Selma's service worker: keeps a copy of the app so it opens offline.
 // Network first, so a connected device always gets the latest version.
 
-const CACHE = 'selma-roam-v7';
+const CACHE = 'selma-roam-v8';
 const APP_FILES = [
   './',
   'index.html',
