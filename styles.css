@@ -318,3 +318,12 @@ footer .backup-how { flex-basis: 100%; }
 .map-paper .woonerven path.been { stroke-opacity: 1; stroke-width: 3.5; }
 .woonerf-key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--clay); opacity: .4; flex: none; }
 .woonerf-key.been { opacity: 1; height: 4px; }
+dialog .check-row { display: flex; gap: 4px 12px; align-items: center; flex-wrap: wrap; }
+dialog .check-row #bieb-status { font-size: 14px; }
+.later { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.later .eyebrow { margin-bottom: 6px; }
+.later ul { list-style: none; margin: 0; padding: 0; }
+.later li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 6px 0; }
+.later li span { flex: 1 1 100%; }
+@media (min-width: 560px) { .later li span { flex: 1 1 auto; } }
+.later .quiet-link { color: var(--muted); }

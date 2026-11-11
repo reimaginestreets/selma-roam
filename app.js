@@ -33,7 +33,7 @@ const outingDialog = $('#outing-dialog');
 const outingForm = $('#outing-form');
 
 function blankState() {
-  return { outings: [], removed: [], home: null, headed: null };
+  return { outings: [], removed: [], later: [], home: null, headed: null };
 }
 
 function loadState() {
@@ -238,17 +238,21 @@ function somewhereSpot(kind, from, not) {
   const others = fresh.filter((b) => b !== first && kmBetween(b, first) <= roundKm)
     .sort((a, b) => kmBetween(a, first) - kmBetween(b, first)).slice(0, 2);
   const stops = [first, ...others].map(({ id, lat, lon, name }) => ({ id, lat, lon, name }));
+  return { way: kind, stops, lat: first.lat, lon: first.lon, ...fromHere(first, from), ids: stops.map((b) => b.id) };
+}
+
+// How far, and which way, a place is from where you are.
+function fromHere(to, from) {
   const rad = Math.PI / 180;
-  const bearing = (Math.atan2((first.lon - from.lon) * Math.cos(from.lat * rad), first.lat - from.lat) / rad + 360) % 360;
-  return {
-    way: kind,
-    stops,
-    lat: first.lat,
-    lon: first.lon,
-    km: first.km,
-    toward: COMPASS[Math.round(bearing / 45) % 8],
-    ids: stops.map((b) => b.id),
-  };
+  const bearing = (Math.atan2((to.lon - from.lon) * Math.cos(from.lat * rad), to.lat - from.lat) / rad + 360) % 360;
+  return { km: kmBetween(from, to), toward: COMPASS[Math.round(bearing / 45) % 8] };
+}
+
+// The nearest mini bieb Selma knows of, within a short walk of a pin.
+function biebNear(at) {
+  const near = SPOTS.bieb.list.map((b) => ({ b, km: kmBetween(at, b) })).filter((x) => x.km <= 0.15)
+    .sort((a, b) => a.km - b.km)[0];
+  return near?.b || null;
 }
 
 const farWords = (km) => (km < 1 ? `${Math.max(1, Math.round(km * 10)) * 100} m` : `${km.toFixed(1)} km`);
@@ -303,6 +307,7 @@ function pickHTML() {
         <button class="btn" data-action="pick" data-way="woonerf">A woonerf</button>
         <button class="link" data-action="close-pick">Not now</button>
       </div>
+      ${laterHTML()}
     </div>`;
   }
   if (pick.choosingKind) return kindsHTML();
@@ -317,8 +322,36 @@ function pickHTML() {
         ? `${pick.surprise ? `<button class="btn quiet" data-action="pick" data-way="kind" data-kind="">Surprise me again</button>` : ''}
       <button class="btn quiet" data-action="pick" data-way="kind">Another kind</button>`
         : `<button class="btn quiet" data-action="pick" data-way="${pick.way}">Somewhere else</button>`}
+      ${pick.way === 'kind' ? '' : '<button class="btn quiet" data-action="save-later">Save for later</button>'}
       <button class="link" data-action="close-pick">Not now</button>
     </div>
+  </div>`;
+}
+
+// Places Selma offered that you'd like to get to some other day. A mini bieb or woonerf drops off
+// the list once you've been.
+function laterList() {
+  return state.later.filter((p) => !SPOTS[p.way] || !p.ids.every((id) => spotsBeen(p.way).has(id)));
+}
+
+function laterTitle(p) {
+  if (p.way === 'bieb') return p.stops.length > 1 ? `A round of ${p.stops.length === 2 ? 'two' : 'three'} mini biebs` : p.stops[0].name || 'A mini bieb';
+  if (p.way === 'woonerf') return p.stops.map((b) => b.name).join(', ');
+  if (p.name) return p.name;
+  return `Somewhere ${p.way === 'bike' ? 'by bike' : 'on foot'}, ${p.toward}`;
+}
+
+function laterHTML() {
+  const list = laterList();
+  if (!list.length) return '';
+  return `<div class="later">
+    <p class="eyebrow">Saved for later</p>
+    <ul>${list.map((p) => `<li>
+      <span>${esc(laterTitle(p))}</span>
+      <button class="link small" data-action="go-later" data-id="${esc(p.id)}">Go now</button>
+      <a class="link small" href="${mapsLink(p)}" target="_blank" rel="noopener">Maps</a>
+      <button class="link small quiet-link" data-action="drop-later" data-id="${esc(p.id)}" aria-label="Take ${esc(laterTitle(p))} off the list">Remove</button>
+    </li>`).join('')}</ul>
   </div>`;
 }
 
@@ -560,7 +593,9 @@ function renderMap() {
   const erven = SPOTS.woonerf.list.filter((w) => inView(X(w), Y(w), -40))
     .map((w) => `<path class="woonerf${ervenBeen.has(w.id) ? ' been' : ''}" d="${w.lines.map(linePath).join(' ')}"/>`).join('');
   const been = spotsBeen('bieb');
-  const biebs = SPOTS.bieb.list.map(({ id, lat, lon }) => ({ x: X({ lon }), y: Y({ lat }), been: been.has(id) }))
+  const found = state.outings.filter((o) => o.minibieb && o.lat != null).map((o) => ({ lat: o.lat, lon: o.lon, been: true }));
+  const biebs = [...SPOTS.bieb.list.map(({ id, lat, lon }) => ({ lat, lon, been: been.has(id) })), ...found]
+    .map(({ lat, lon, been }) => ({ x: X({ lon }), y: Y({ lat }), been }))
     .filter((b) => b.x > 6 && b.x < W - 6 && b.y > 6 && b.y < H - 6)
     .map((b) => `<circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="4" class="bieb${b.been ? ' been' : ''}"/>`).join('');
   $('#map').innerHTML = `
@@ -619,6 +654,7 @@ function toast(message) {
 /* ---------- Noting an outing ---------- */
 
 function setPin(lat, lon, words) {
+  queueMicrotask(showBiebMatch);
   outingForm.elements.lat.value = lat ?? '';
   outingForm.elements.lon.value = lon ?? '';
   $('#pin-status').textContent = words;
@@ -669,6 +705,7 @@ function openOutingDialog(existing, day = '', from = null) {
   f.place.placeholder = from?.way === 'kind' ? 'Where did you end up?' : 'e.g., Kralingse Plas, the Zwaanshals, Gouda';
   f.noticed.value = existing?.noticed || '';
   f.research.checked = existing ? !!existing.research : from?.way === 'woonerf';
+  f.bieb.checked = existing ? !!(existing.biebs?.length || existing.minibieb) : from?.way === 'bieb';
   f.noticed.placeholder = from?.noticing || choose(NOTICINGS);
 
   if (existing?.lat != null) setPin(existing.lat, existing.lon, 'Pinned on the map.');
@@ -682,8 +719,24 @@ function openOutingDialog(existing, day = '', from = null) {
   $('#stops').hidden = dialogStops.length < 2;
   $('#stops').innerHTML = '<legend>Which did you get to?</legend>' + dialogStops.map((b, i) =>
     `<label><input type="checkbox" name="stops" value="${esc(b.id)}" checked><span>${b.name ? esc(b.name) : ['The first', 'The second', 'The third'][i]}</span></label>`).join('');
+  showBiebMatch();
   outingDialog.showModal();
 }
+
+// With the mini bieb box ticked, which mini bieb the pin is at: one Selma knows of, or a new one.
+function showBiebMatch() {
+  const f = outingForm.elements;
+  let words = '';
+  if (f.bieb.checked && !dialogStops.length) {
+    const at = f.lat.value ? { lat: Number(f.lat.value), lon: Number(f.lon.value) } : null;
+    const known = at && biebNear(at);
+    words = !at ? 'Pin it so Selma knows which one.'
+      : known ? `That's ${known.name || 'a mini bieb Selma knows of'}, ${Math.round(kmBetween(at, known) * 1000)} m from your pin.`
+      : "One Selma didn't know of. It'll go on your map.";
+  }
+  $('#bieb-status').textContent = words;
+}
+outingForm.elements.bieb.addEventListener('change', showBiebMatch);
 
 // Typing a place you've been before brings its pin along, and so does a town Selma knows, or the
 // name of a woonerf or mini bieb (the one nearest home, since street names repeat from town to town).
@@ -697,6 +750,7 @@ outingForm.elements.place.addEventListener('input', (event) => {
     const spot = SPOTS[kind].list.filter((b) => b.name?.toLowerCase() === name)
       .sort((a, b) => kmBetween(a, home()) - kmBetween(b, home()))[0];
     if (!spot) continue;
+    if (kind === 'bieb') outingForm.elements.bieb.checked = true;
     // For a woonerf, the point on the street nearest its middle, so the pin is on the street itself.
     const at = spot.lines ? spot.lines.flatMap((l) => l.filter((_, i) => i % 2 === 0).map((lat, i) => ({ lat, lon: l[2 * i + 1] })))
       .sort((a, b) => kmBetween(a, spot) - kmBetween(b, spot))[0] : spot;
@@ -749,6 +803,30 @@ document.addEventListener('click', async (event) => {
     save();
     renderToday();
     toast('Enjoy it.');
+  } else if (action === 'save-later') {
+    state.later.push({ ...pick, id: newId() });
+    picking = false;
+    pick = null;
+    save();
+    renderToday();
+    toast('Saved for later. It will be under Take me somewhere.');
+  } else if (action === 'go-later') {
+    const saved = state.later.find((p) => p.id === el.dataset.id);
+    if (!saved) return;
+    let from;
+    try { from = await whereAmI(); } catch { from = home(); }
+    const way = SPOTS[saved.way] ? fromHere(saved.stops[0], from) : saved.lat != null && !saved.name ? fromHere(saved, from) : {};
+    state.headed = { ...saved, ...way, noticing: choose(saved.way === 'woonerf' ? WOONERF_NOTICINGS : NOTICINGS), laterId: saved.id };
+    picking = false;
+    pick = null;
+    save();
+    renderToday();
+    toast('Enjoy it.');
+  } else if (action === 'drop-later') {
+    state.later = state.later.filter((p) => p.id !== el.dataset.id);
+    state.removed.push(el.dataset.id);
+    save();
+    renderToday();
   } else if (action === 'back') {
     openOutingDialog(null, '', state.headed);
   } else if (action === 'not-going') {
@@ -849,11 +927,21 @@ outingForm.addEventListener('submit', (event) => {
   };
   const existing = state.outings.find((o) => o.id === text('id'));
   if (dialogSpot) fields[dialogSpot.field] = dialogStops.length > 1 ? data.getAll('stops') : [dialogStops[0].id];
+  // The mini bieb box: the round's stops, or the known one nearest the pin, or a new one at the pin.
+  if (data.get('bieb') !== 'on') { fields.biebs = []; fields.minibieb = false; }
+  else if (dialogSpot !== SPOTS.bieb) {
+    const known = fields.lat != null && biebNear(fields);
+    fields.biebs = known ? [known.id] : [];
+    fields.minibieb = !known;
+  }
   fields.edited = Date.now();
   if (existing) Object.assign(existing, fields);
   else {
     state.outings.push({ id: newId(), at: Date.now(), day: text('day') || dayKey(), ...fields });
-    if (state.headed && !text('day')) state.headed = null;
+    if (state.headed && !text('day')) {
+      state.later = state.later.filter((p) => p.id !== state.headed.laterId);
+      state.headed = null;
+    }
   }
   save();
   outingDialog.close();
@@ -927,6 +1015,8 @@ function mergeIn(data) {
   }
   const gone = state.outings.filter((o) => removed.has(o.id)).length;
   state.outings = [...byId.values()].filter((o) => !removed.has(o.id));
+  const laterIds = new Set(state.later.map((p) => p.id));
+  state.later = [...state.later, ...(data.later || []).filter((p) => !laterIds.has(p.id))].filter((p) => !removed.has(p.id));
   state.removed = [...removed];
   state.home ||= data.home || null;
   state.headed ||= data.headed || null;
