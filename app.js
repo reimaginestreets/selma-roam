@@ -697,8 +697,6 @@ function openOutingDialog(existing, day = '', from = null) {
   $('#ways').innerHTML = '<legend>How <span class="optional">as many as apply</span></legend>' + WAYS.map((w) =>
     `<label><input type="checkbox" name="ways" value="${w.id}" ${ways.includes(w.id) ? 'checked' : ''}><span>${w.name}</span></label>`).join('');
 
-  const names = [...new Set([...state.outings].sort((a, b) => b.at - a.at).map((o) => o.place))];
-  $('#places').innerHTML = names.map((n) => `<option value="${esc(n)}">`).join('');
 
   const fromPlace = from?.way === 'bieb' ? (from.stops.length > 1 ? 'Mini bieb round' : from.stops[0].name || 'Mini bieb')
     : from?.way === 'woonerf' ? from.stops.map((b) => b.name).join(', ')
